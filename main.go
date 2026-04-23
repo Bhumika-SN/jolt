@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-        "path/filepath"
+	"path/filepath"
 	"strings"
 )
 
@@ -28,37 +28,30 @@ func downloadDep(dep string) (string, error) {
 	if len(parts) != 3 {
 		return "", fmt.Errorf("invalid dependency format: %s", dep)
 	}
-
 	group := strings.ReplaceAll(parts[0], ".", "/")
 	artifact := parts[1]
 	version := parts[2]
-
 	url := fmt.Sprintf("https://repo1.maven.org/maven2/%s/%s/%s/%s-%s.jar",
 		group, artifact, version, artifact, version)
-
 	jarName := fmt.Sprintf("%s-%s.jar", artifact, version)
 	cacheDir := ".jolt-cache"
 	os.MkdirAll(cacheDir, 0755)
 	jarPath := cacheDir + "/" + jarName
-
 	if _, err := os.Stat(jarPath); err == nil {
 		fmt.Println("✅ Cached:", jarName)
 		return jarPath, nil
 	}
-
 	fmt.Println("⬇️  Downloading:", jarName)
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-
 	out, err := os.Create(jarPath)
 	if err != nil {
 		return "", err
 	}
 	defer out.Close()
-
 	io.Copy(out, resp.Body)
 	fmt.Println("✅ Downloaded:", jarName)
 	return jarPath, nil
@@ -98,9 +91,17 @@ func main() {
 	// Build classpath
 	classpath := strings.Join(jarPaths, ";")
 
-	// Compile
+	// Create temp output dir for .class files
+	tmpDir, err := os.MkdirTemp("", "jolt-*")
+	if err != nil {
+		fmt.Println("❌ Could not create temp dir:", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(tmpDir) // auto cleanup after run
+
+	// Compile into temp dir
 	fmt.Println("🔨 Compiling", file, "...")
-	compileArgs := []string{file}
+	compileArgs := []string{"-d", tmpDir, file}
 	if classpath != "" {
 		compileArgs = append([]string{"-cp", classpath}, compileArgs...)
 	}
@@ -114,19 +115,19 @@ func main() {
 	}
 	fmt.Println("✅ Compiled successfully!")
 
-        // Get class name from filename (strip path, just the name)
-        className := strings.TrimSuffix(filepath.Base(file), ".java")
-        fileDir := filepath.Dir(file)
+	// Get class name from filename (strip path, just the name)
+	className := strings.TrimSuffix(filepath.Base(file), ".java")
 
 	// Run
 	fmt.Println("🚀 Running", className, "...")
 	fmt.Println("-----------------------------------")
+
 	runArgs := []string{className}
-        if classpath != "" {
-        runArgs = append([]string{"-cp", fileDir + ";" + classpath}, runArgs...)
-        } else {
-        runArgs = append([]string{"-cp", fileDir}, runArgs...)
-        }
+	if classpath != "" {
+		runArgs = append([]string{"-cp", tmpDir + ";" + classpath}, runArgs...)
+	} else {
+		runArgs = append([]string{"-cp", tmpDir}, runArgs...)
+	}
 
 	runCmd := exec.Command("java", runArgs...)
 	runCmd.Stdout = os.Stdout
