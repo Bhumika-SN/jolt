@@ -63,14 +63,12 @@ func getInstalledJavaVersion() string {
 
 func checkJava() bool {
 	cmd := exec.Command("java", "-version")
-	err := cmd.Run()
-	return err == nil
+	return cmd.Run() == nil
 }
 
 func checkJavac() bool {
 	cmd := exec.Command("javac", "-version")
-	err := cmd.Run()
-	return err == nil
+	return cmd.Run() == nil
 }
 
 func downloadJDK() error {
@@ -115,12 +113,12 @@ func downloadDep(dep string) (string, error) {
 		group, artifact, version, artifact, version)
 	jarName := fmt.Sprintf("%s-%s.jar", artifact, version)
 	homeDir, err := os.UserHomeDir()
-if err != nil {
-    return "", fmt.Errorf("could not find home dir: %w", err)
-}
-cacheDir := filepath.Join(homeDir, ".jolt", "cache")
-os.MkdirAll(cacheDir, 0755)
-jarPath := filepath.Join(cacheDir, jarName)
+	if err != nil {
+		return "", fmt.Errorf("could not find home dir: %w", err)
+	}
+	cacheDir := filepath.Join(homeDir, ".jolt", "cache")
+	os.MkdirAll(cacheDir, 0755)
+	jarPath := filepath.Join(cacheDir, jarName)
 	if _, err := os.Stat(jarPath); err == nil {
 		fmt.Println("✅ Cached:", jarName)
 		return jarPath, nil
@@ -142,10 +140,75 @@ jarPath := filepath.Join(cacheDir, jarName)
 	return jarPath, nil
 }
 
+func initFile(filename string) {
+	if _, err := os.Stat(filename); err == nil {
+		fmt.Println("❌ File already exists:", filename)
+		os.Exit(1)
+	}
+	className := strings.TrimSuffix(filepath.Base(filename), ".java")
+	template := fmt.Sprintf(`//DEPS com.google.code.gson:gson:2.10.1
+//JAVA 21
+
+public class %s {
+    public static void main(String[] args) {
+        System.out.println("Hello from %s!");
+    }
+}
+`, className, className)
+	err := os.WriteFile(filename, []byte(template), 0644)
+	if err != nil {
+		fmt.Println("❌ Could not create file:", err)
+		os.Exit(1)
+	}
+	fmt.Println("✅ Created:", filename)
+	fmt.Println("💡 Run it with: jolt", filename)
+}
+
+func clearCache() {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("❌ Could not find home dir:", err)
+		os.Exit(1)
+	}
+	cacheDir := filepath.Join(homeDir, ".jolt", "cache")
+	err = os.RemoveAll(cacheDir)
+	if err != nil {
+		fmt.Println("❌ Could not clear cache:", err)
+		os.Exit(1)
+	}
+	fmt.Println("✅ Cache cleared!")
+}
+
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: jolt <file.java>")
+		fmt.Println("⚡ jolt - Java, but instant.")
+		fmt.Println("")
+		fmt.Println("Usage:")
+		fmt.Println("  jolt <file.java>        Run a Java file")
+		fmt.Println("  jolt init <file.java>   Create a new Java file")
+		fmt.Println("  jolt cache clear        Clear the global cache")
+		fmt.Println("  jolt version            Show jolt version")
 		os.Exit(1)
+	}
+
+	// Handle commands
+	if os.Args[1] == "init" {
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: jolt init <file.java>")
+			os.Exit(1)
+		}
+		initFile(os.Args[2])
+		os.Exit(0)
+	}
+
+	if os.Args[1] == "version" {
+		fmt.Println("jolt version 0.1.0")
+		os.Exit(0)
+	}
+
+	if os.Args[1] == "cache" && len(os.Args) > 2 && os.Args[2] == "clear" {
+		clearCache()
+		os.Exit(0)
 	}
 
 	file := os.Args[1]
