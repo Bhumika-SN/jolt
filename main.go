@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+        "github.com/schollz/progressbar/v3"
 )
 
 func extractDeps(content string) []string {
@@ -42,18 +44,24 @@ func downloadDep(dep string) (string, error) {
 		return jarPath, nil
 	}
 	fmt.Println("⬇️  Downloading:", jarName)
-	resp, err := http.Get(url)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	out, err := os.Create(jarPath)
-	if err != nil {
-		return "", err
-	}
-	defer out.Close()
-	io.Copy(out, resp.Body)
-	fmt.Println("✅ Downloaded:", jarName)
+resp, err := http.Get(url)
+if err != nil {
+    return "", err
+}
+defer resp.Body.Close()
+
+out, err := os.Create(jarPath)
+if err != nil {
+    return "", err
+}
+defer out.Close()
+
+bar := progressbar.DefaultBytes(
+    resp.ContentLength,
+    jarName,
+)
+io.Copy(io.MultiWriter(out, bar), resp.Body)
+fmt.Println("\n✅ Downloaded:", jarName)
 	return jarPath, nil
 }
 func checkJava() bool {
