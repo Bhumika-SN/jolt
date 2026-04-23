@@ -114,9 +114,13 @@ func downloadDep(dep string) (string, error) {
 	url := fmt.Sprintf("https://repo1.maven.org/maven2/%s/%s/%s/%s-%s.jar",
 		group, artifact, version, artifact, version)
 	jarName := fmt.Sprintf("%s-%s.jar", artifact, version)
-	cacheDir := ".jolt-cache"
-	os.MkdirAll(cacheDir, 0755)
-	jarPath := cacheDir + "/" + jarName
+	homeDir, err := os.UserHomeDir()
+if err != nil {
+    return "", fmt.Errorf("could not find home dir: %w", err)
+}
+cacheDir := filepath.Join(homeDir, ".jolt", "cache")
+os.MkdirAll(cacheDir, 0755)
+jarPath := filepath.Join(cacheDir, jarName)
 	if _, err := os.Stat(jarPath); err == nil {
 		fmt.Println("✅ Cached:", jarName)
 		return jarPath, nil

@@ -1,5 +1,5 @@
 //DEPS com.google.code.gson:gson:2.10.1
-//JAVA 17
+//JAVA 21
 
 public class Hello {
     public static void main(String[] args) {
