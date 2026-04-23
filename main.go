@@ -56,6 +56,53 @@ func downloadDep(dep string) (string, error) {
 	fmt.Println("✅ Downloaded:", jarName)
 	return jarPath, nil
 }
+func checkJava() bool {
+	cmd := exec.Command("java", "-version")
+	err := cmd.Run()
+	return err == nil
+}
+
+func checkJavac() bool {
+	cmd := exec.Command("javac", "-version")
+	err := cmd.Run()
+	return err == nil
+}
+
+func downloadJDK() error {
+	jdkDir := filepath.Join(os.Getenv("USERPROFILE"), ".jolt", "jdks", "21")
+
+	if _, err := os.Stat(jdkDir); err == nil {
+		fmt.Println("✅ JDK 21 already downloaded.")
+		os.Setenv("JAVA_HOME", jdkDir)
+		os.Setenv("PATH", jdkDir+`\bin;`+os.Getenv("PATH"))
+		return nil
+	}
+
+	os.MkdirAll(jdkDir, 0755)
+
+	url := "https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jdk/hotspot/normal/eclipse?project=jdk"
+	zipPath := filepath.Join(os.Getenv("USERPROFILE"), ".jolt", "jdk21.zip")
+
+	fmt.Println("⬇️  Downloading JDK 21 from Adoptium...")
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	out, err := os.Create(zipPath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	io.Copy(out, resp.Body)
+	fmt.Println("✅ JDK downloaded!")
+	fmt.Println("💡 Please install Java manually from: https://adoptium.net")
+	fmt.Println("   Then run jolt again.")
+	os.Exit(0)
+	return nil
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -70,6 +117,16 @@ func main() {
 		fmt.Println("❌ Error reading file:", err)
 		os.Exit(1)
 	}
+        // Check Java is installed
+if !checkJava() || !checkJavac() {
+	fmt.Println("❌ Java not found on your system.")
+	fmt.Println("⬇️  Auto-downloading JDK 21...")
+	err := downloadJDK()
+	if err != nil {
+		fmt.Println("❌ Failed to download JDK:", err)
+		os.Exit(1)
+	}
+}
 
 	deps := extractDeps(string(content))
 	var jarPaths []string
