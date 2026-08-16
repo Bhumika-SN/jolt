@@ -6,3 +6,8 @@ public class MyApp {
         System.out.println("Hello from MyApp!");
     }
 }
+
+
+
+
+//we can add the Java 17 to by just modeling it
