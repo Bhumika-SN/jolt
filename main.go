@@ -1,6 +1,6 @@
-6package main
-
+package main
 import (
+        "encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -139,6 +139,84 @@ func downloadDep(dep string) (string, error) {
 	fmt.Println("\n✅ Downloaded:", jarName)
 	return jarPath, nil
 }
+type pomDependency struct {
+	GroupID    string `xml:"groupId"`
+	ArtifactID string `xml:"artifactId"`
+	Version    string `xml:"version"`
+	Scope      string `xml:"scope"`
+	Optional   string `xml:"optional"`
+}
+
+type pomProject struct {
+	Dependencies []pomDependency `xml:"dependencies>dependency"`
+}
+
+func fetchPomDeps(group, artifact, version string) []pomDependency {
+	groupPath := strings.ReplaceAll(group, ".", "/")
+	url := fmt.Sprintf("https://repo1.maven.org/maven2/%s/%s/%s/%s-%s.pom",
+		groupPath, artifact, version, artifact, version)
+
+	resp, err := http.Get(url)
+	if err != nil || resp.StatusCode != 200 {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil
+	}
+
+	var pom pomProject
+	if err := xml.Unmarshal(data, &pom); err != nil {
+		return nil
+	}
+	return pom.Dependencies
+}
+
+// resolveTransitive walks the dependency tree starting from the direct //DEPS
+// entries and returns every "group:artifact:version" coordinate that needs
+// to be downloaded, including transitive runtime dependencies.
+func resolveTransitive(directDeps []string) []string {
+	seen := make(map[string]bool)
+	var resolved []string
+
+	var visit func(dep string)
+	visit = func(dep string) {
+		parts := strings.Split(dep, ":")
+		if len(parts) != 3 {
+			return
+		}
+		group, artifact, version := parts[0], parts[1], parts[2]
+		key := group + ":" + artifact
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		resolved = append(resolved, dep)
+
+		children := fetchPomDeps(group, artifact, version)
+		for _, c := range children {
+			if c.Scope == "test" || c.Scope == "provided" || c.Optional == "true" {
+				continue
+			}
+			if strings.Contains(c.Version, "${") || c.Version == "" {
+				// Can't resolve property-placeholder or missing versions
+				// without full POM inheritance — skip rather than guess wrong.
+				continue
+			}
+			childKey := c.GroupID + ":" + c.ArtifactID
+			if !seen[childKey] {
+				visit(fmt.Sprintf("%s:%s:%s", c.GroupID, c.ArtifactID, c.Version))
+			}
+		}
+	}
+
+	for _, d := range directDeps {
+		visit(d)
+	}
+	return resolved
+}
 
 func initFile(filename string) {
 	if _, err := os.Stat(filename); err == nil {
@@ -245,15 +323,19 @@ func main() {
 		}
 	}
 
-	// Resolve dependencies
-	deps := extractDeps(string(content))
+// Resolve dependencies (including transitive runtime deps)
+	directDeps := extractDeps(string(content))
 	var jarPaths []string
 
-	if len(deps) == 0 {
+	if len(directDeps) == 0 {
 		fmt.Println("📦 No dependencies found.")
 	} else {
 		fmt.Println("📦 Resolving dependencies...")
-		for _, dep := range deps {
+		allDeps := resolveTransitive(directDeps)
+		if len(allDeps) > len(directDeps) {
+			fmt.Printf("   Found %d transitive dependency(ies)\n", len(allDeps)-len(directDeps))
+		}
+		for _, dep := range allDeps {
 			jarPath, err := downloadDep(dep)
 			if err != nil {
 				fmt.Println("❌ Failed:", dep, err)
@@ -261,9 +343,7 @@ func main() {
 			}
 			jarPaths = append(jarPaths, jarPath)
 		}
-	}
-
-	// Build classpath
+	}	// Build classpath
 	classpath := strings.Join(jarPaths, ";")
 
 	// Create temp output dir for .class files
