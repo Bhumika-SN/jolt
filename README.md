@@ -116,5 +116,14 @@ See the \[`examples/`](./examples) folder for sample `.java` files.
 
 
 
+
+
+
+## Why
+
 Running a quick Java experiment usually means spinning up a full Maven/Gradle project just to test one file. Jolt skips that — point it at a `.java` file and it handles dependency resolution, version checking, compiling, and running for you.
+
+### Transitive dependency resolution
+
+Jolt doesn't just download the jars you list in `//DEPS` — it recursively resolves each dependency's own POM file from Maven Central, pulling in transitive runtime dependencies automatically (skipping `test`/`provided`/`optional` scopes). For example, declaring only OkHttp will automatically resolve and cache its Kotlin stdlib and Okio dependencies, without needing to list them manually.
 
